@@ -320,6 +320,106 @@ outputs/sample/
 - feature_to_id
 - word_feature_ids
 
+## 現在の実験結果
+
+UD English-EWTで、最小HMMを以下の条件で学習しました。
+
+```bash
+./.venv/bin/python -m src.train \
+  --train data/en_ewt-ud-train.conllu \
+  --dev data/en_ewt-ud-dev.conllu \
+  --num-tags 17 \
+  --min-freq 2 \
+  --epochs 30 \
+  --batch-size 32 \
+  --lr 0.01 \
+  --output-dir outputs/ewt_run1
+```
+
+学習後、test splitに対してViterbiデコードと評価を行いました。
+
+```bash
+./.venv/bin/python -m src.decode \
+  --model outputs/ewt_run1/model.pt \
+  --input data/en_ewt-ud-test.conllu \
+  --output outputs/ewt_run1/predictions.conllu
+
+./.venv/bin/python -m src.evaluate \
+  --gold data/en_ewt-ud-test.conllu \
+  --pred outputs/ewt_run1/predictions.conllu \
+  --output outputs/ewt_run1/metrics.json
+```
+
+学習結果:
+
+```text
+best_epoch: 30
+train_nll_per_token: 6.1556
+dev_nll_per_token: 5.9404
+vocab_size: 9874
+num_tags: 17
+```
+
+test評価:
+
+```json
+{
+  "many_to_one_accuracy": 0.3043,
+  "v_measure": 0.1905,
+  "nmi": 0.1905,
+  "ari": 0.0921,
+  "num_clusters_used": 14,
+  "num_tokens": 25094
+}
+```
+
+注意: `outputs/` は `.gitignore` 対象なので、上記の学習済みモデルや評価ファイルは通常のGit管理には含めません。必要な場合は同じコマンドで再生成します。
+
+### test出力例
+
+例1:
+
+```text
+INPUT:
+What if Google Morphed Into GoogleOS ?
+
+GOLD:
+What/PRON if/SCONJ Google/PROPN Morphed/VERB Into/ADP GoogleOS/PROPN ?/PUNCT
+
+PRED:
+What/C8(PRON) if/C11(PRON) Google/C10(NOUN) Morphed/C3(PUNCT) Into/C15(PROPN) GoogleOS/C15(PROPN) ?/C15(PROPN)
+```
+
+例2:
+
+```text
+INPUT:
+What if Google expanded on its search - engine ( and now e-mail ) wares into a full - fledged operating system ?
+
+GOLD:
+What/PRON if/SCONJ Google/PROPN expanded/VERB on/ADP its/PRON search/NOUN -/PUNCT engine/NOUN (/PUNCT and/CCONJ now/ADV e-mail/NOUN )/PUNCT wares/NOUN into/ADP a/DET full/ADV -/PUNCT fledged/ADJ operating/NOUN system/NOUN ?/PUNCT
+
+PRED:
+What/C8(PRON) if/C11(PRON) Google/C10(NOUN) expanded/C10(NOUN) on/C10(NOUN) its/C10(NOUN) search/C10(NOUN) -/C10(NOUN) engine/C10(NOUN) (/C10(NOUN) and/C10(NOUN) now/C10(NOUN) e-mail/C3(PUNCT) )/C14(PUNCT) wares/C10(NOUN) into/C10(NOUN) a/C10(NOUN) full/C10(NOUN) -/C10(NOUN) fledged/C10(NOUN) operating/C10(NOUN) system/C10(NOUN) ?/C3(PUNCT)
+```
+
+`C8(PRON)` のような表記は、クラスタID `8` がmany-to-one評価で `PRON` に対応したことを示しています。モデル自体が出力しているのは `CLUSTER_8` のようなクラスタIDであり、括弧内の品詞名は評価後の解釈です。
+
+現状の観察:
+
+- 固有名詞らしい語は `C15(PROPN)` に寄る傾向があります。
+- `C10(NOUN)` が大きなクラスタになっており、名詞だけでなく前置詞、限定詞、句読点も吸っています。
+- 句読点クラスタは一部まとまりますが、完全には分離していません。
+- 教師なしHMMとしては一通り動いていますが、クラスタ分離はまだ粗いです。
+
+次の改善候補:
+
+- `--use-features` を付けた特徴量付きemissionで本学習する
+- `K=12`, `17`, `20` を比較する
+- `seed=0`, `1`, `2` を比較する
+- 学習率を下げる
+- epoch数を増やすか、dev NLLに基づくearly stoppingを追加する
+
 ## 動作確認済みコマンド
 
 以下のスモークテストは確認済みです。
